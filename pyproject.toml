@@ -14,6 +14,29 @@ dependencies = [
     "pypdf>=6.0",
 ]
 
+# 可安装的命令入口(uv sync 后,任何目录都能直接运行):
+#   rag-qa    等价于 uv run app.py(知识库问答)
+#   rag-ingest 等价于 uv run ingest.py(文档入库)
+[project.scripts]
+rag-qa = "rag.cli:chat"
+rag-ingest = "rag.cli:ingest"
+
+# 构建后端:声明之后 uv sync 会把本项目以可编辑模式装进 .venv,
+# rag 包成为"真正安装的包"而不是依赖 cwd 的裸目录
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# wheel 打包范围:只装 rag 包(app.py / ingest.py 是根目录薄壳,不进包)
+[tool.hatch.build.targets.wheel]
+packages = ["rag"]
+
+# 开发依赖(uv sync 默认不装,uv sync --dev 或 uv run 时按需装)
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
 # 国内镜像(uv 专用配置):直连 pypi.org 在国内经常超时
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"

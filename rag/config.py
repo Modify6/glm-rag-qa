@@ -10,7 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # 项目根目录:由当前文件位置向上推导(rag/config.py → rag/ → 项目根)。
-# 好处:无论从哪个工作目录启动脚本,docs/ 和 data/ 都能正确定位,
+# 好处:无论从哪个工作目录启动脚本,knowledge/ 和 data/ 都能正确定位,
 # 避免"在别的目录执行 python D:\...\ingest.py 时找不到文档"的问题。
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -35,8 +35,10 @@ CHAT_MODEL: str = os.getenv("CHAT_MODEL", "glm-4-flash")
 EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "embedding-3")
 
 # ========== 路径配置 ==========
-# 知识库文档目录:ingest.py 递归扫描这里的 .md / .txt / .pdf
-DOCS_DIR: Path = PROJECT_ROOT / "docs"
+# 知识库语料目录:ingest.py 递归扫描这里的 .md / .txt / .pdf。
+# 注意:不叫 docs/ —— Python 项目惯例中 docs/ 指项目文档,知识库语料
+# 是数据,放 knowledge/ 避免语义混淆。
+KNOWLEDGE_DIR: Path = PROJECT_ROOT / "knowledge"
 # 向量库持久化目录:Chroma 会在这里落盘(sqlite + 集合数据),
 # 删掉整个目录 = 清空知识库,重新 ingest.py --rebuild 即可重建。
 CHROMA_DIR: Path = PROJECT_ROOT / "data" / "chroma"

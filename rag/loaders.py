@@ -1,6 +1,6 @@
 """文档加载与切分:RAG 离线入库阶段的前两步。
 
-流程:docs/ 下的文件 --load_documents()--> Document 列表 --split_documents()--> chunk 列表
+流程:knowledge/ 下的文件 --load_documents()--> Document 列表 --split_documents()--> chunk 列表
 
 本模块是纯函数(不碰网络、不碰向量库),只做文本 I/O 与切分,
 是最容易写单元测试的部分。
@@ -23,7 +23,7 @@ LOADERS = {
 }
 
 
-def load_documents(docs_dir: Path | None = None) -> list[Document]:
+def load_documents(knowledge_dir: Path | None = None) -> list[Document]:
     """加载目录下所有支持的文档,返回 Document 列表(每个文件/页一个)。
 
     Document 是 LangChain 对"一段带元数据的文本"的统一抽象:
@@ -33,10 +33,10 @@ def load_documents(docs_dir: Path | None = None) -> list[Document]:
 
     不认识的扩展名静默跳过,保证目录里混入无关文件(如 .env.example)不报错。
     """
-    docs_dir = docs_dir or config.DOCS_DIR
+    knowledge_dir = knowledge_dir or config.KNOWLEDGE_DIR
     documents: list[Document] = []
     # rglob 递归遍历所有子目录;sorted 保证入库顺序稳定(便于复现和排查)
-    for path in sorted(docs_dir.rglob("*")):
+    for path in sorted(knowledge_dir.rglob("*")):
         if not path.is_file():
             continue
         loader_cls = LOADERS.get(path.suffix.lower())

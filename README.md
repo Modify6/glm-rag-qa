@@ -65,7 +65,7 @@ RAG 的完整流程分两个阶段:
 ```
 【离线:入库阶段】                        【在线:问答阶段】
 
- docs/ 目录                              用户提问
+ knowledge/ 目录                         用户提问
     │                                        │
     ▼                                        ▼
  ① 加载 Load                           ① 问题向量化
@@ -80,7 +80,7 @@ RAG 的完整流程分两个阶段:
  ④ 存储 Index(Chroma)                ④ 大模型生成回答
 ```
 
-每个环节更细的原理见 `docs/rag-基础概念.md`(它本身也是本项目知识库里的文档,可以入库后直接问它)。
+每个环节更细的原理见 `knowledge/rag-基础概念.md`(它本身也是本项目知识库里的文档,可以入库后直接问它)。
 
 ## 技术栈与版本说明
 
@@ -132,9 +132,12 @@ uv sync
 |------|------|
 | `uv sync` | 按 uv.lock 创建/更新虚拟环境(拉新机器后第一步) |
 | `uv run xxx.py` | 在项目虚拟环境中运行脚本(自动保证环境就绪) |
+| `uv run pytest` | 运行 tests/ 下的单元测试 |
 | `uv add 包名` | 新增依赖(自动更新 pyproject.toml 和 uv.lock) |
 | `uv remove 包名` | 移除依赖 |
 | `uv lock --upgrade` | 升级所有依赖到允许范围内的最新版 |
+
+另外,pyproject.toml 里注册了两个**全局命令入口**(uv sync 后在虚拟环境中任意目录可用,等效于上面的脚本):`rag-qa`(知识库问答)、`rag-ingest`(文档入库,支持 `--rebuild`)。
 
 ### 3. 获取智谱 API Key
 
@@ -179,7 +182,7 @@ uv run ingest.py        # 或双击 ingest.bat
 完成!共写入 7 个片段到 D:\gd\git\zcode\practice\rea\langchain\data\chroma
 ```
 
-做了什么:遍历 `docs/` 下所有 `.md / .txt / .pdf` → 切分成片段 → 逐片段调用智谱向量 API → 向量连同原文、来源文件名存入本地 Chroma(持久化在 `data/chroma/`)。
+做了什么:遍历 `knowledge/` 下所有 `.md / .txt / .pdf` → 切分成片段 → 逐片段调用智谱向量 API → 向量连同原文、来源文件名存入本地 Chroma(持久化在 `data/chroma/`)。
 
 两个实用变体:
 
@@ -187,7 +190,7 @@ uv run ingest.py        # 或双击 ingest.bat
 uv run ingest.py --rebuild   # 清空向量库重建。修改了 CHUNK_SIZE 等参数后必须用这个
 ```
 
-想换成自己的知识库:把你的文档放进 `docs/`(支持子目录),重新跑一遍即可。删除某篇文档后用 `--rebuild` 重建,因为当前版本是纯增量入库。
+想换成自己的知识库:把你的文档放进 `knowledge/`(支持子目录),重新跑一遍即可。删除某篇文档后用 `--rebuild` 重建,因为当前版本是纯增量入库。
 
 ### 第 2 步:开始问答
 
@@ -211,31 +214,36 @@ uv run app.py           # 或双击 start.bat
 
 ```
 langchain/
-├── app.py                  # 问答入口:命令行多轮对话循环
-├── ingest.py               # 入库脚本:加载 → 切分 → 向量化 → 写入 Chroma
+├── app.py                  # 问答入口(薄壳,逻辑在 rag/cli.py)
+├── ingest.py               # 入库入口(薄壳,逻辑在 rag/cli.py)
 ├── rag/                    # 核心逻辑包(与入口分离,便于复用和测试)
 │   ├── __init__.py
 │   ├── config.py           # 唯一读 .env 的地方,其他模块只 import 配置值
 │   ├── loaders.py          # 文档加载与切分(纯函数,不碰网络)
 │   ├── vectorstore.py      # 向量库封装:打开库、写入库、取检索器
-│   └── chain.py            # RAG 链路组装:检索 → 提示词 → 模型 → 解析
-├── docs/                   # 知识库文档目录(自带 2 篇示例,可整体替换)
+│   ├── chain.py            # RAG 链路组装:检索 → 提示词 → 模型 → 解析
+│   └── cli.py              # 命令行逻辑:chat()(问答)/ ingest()(入库)
+├── tests/                  # pytest 单元测试(uv run pytest 运行)
+│   ├── test_loaders.py
+│   └── test_chain.py
+├── knowledge/              # 知识库语料目录(自带 2 篇示例,可整体替换;不叫 docs/ 是遵循 Python 惯例——docs/ 留给项目文档)
 │   ├── rag-基础概念.md
 │   └── langchain-核心组件.md
 ├── data/chroma/            # Chroma 向量库持久化目录(ingest 后生成,git 忽略)
-├── pyproject.toml          # 依赖与项目元数据(uv 的唯一配置入口)
+├── pyproject.toml          # 依赖与项目元数据(uv 的唯一配置入口,含命令入口)
 ├── uv.lock                 # 依赖精确版本锁文件(提交到 git,保证环境可复现)
 ├── install.bat             # 一键安装:装 uv + uv sync
 ├── ingest.bat              # 入库快捷脚本(参数透传,如 ingest.bat --rebuild)
 ├── start.bat               # 问答启动快捷脚本
 ├── .python-version         # 锁定 Python 版本 3.12(uv 据此自动准备解释器)
+├── LICENSE                 # MIT 许可证
 ├── .env.example            # 配置模板
 ├── .gitignore              # 忽略 .env / data/ / .venv 等
 ├── CODE_GUIDE.md           # 代码工程详解(逐模块精读 + 踩坑复盘)
 └── README.md               # 本文档
 ```
 
-分层原则:**入口脚本只做 I/O(命令行交互、报错退出),`rag/` 包只做核心逻辑**。想给项目加 Web 界面,只需把 `app.py` 换成 Streamlit 页面,`rag/` 一行不用动。
+分层原则:**入口脚本(app.py / ingest.py)是薄壳只做启动,命令行逻辑在 `rag/cli.py`,核心逻辑在 chain / loaders / vectorstore**。想给项目加 Web 界面,只需新写一个入口调 `build_rag_chain()`,`rag/` 其余部分一行不用动。
 
 ## 核心原理与代码详解
 
@@ -397,7 +405,7 @@ API Key 无效或已过期,回开放平台重新生成。注意 Key 格式形如
 ## 延伸阅读
 
 - [CODE_GUIDE.md](CODE_GUIDE.md) —— 代码工程详解:逐模块精读、设计决策、踩坑复盘(想读懂/改造代码必看)
-- 项目内置知识库文档:`docs/rag-基础概念.md`、`docs/langchain-核心组件.md`
+- 项目内置知识库文档:`knowledge/rag-基础概念.md`、`knowledge/langchain-核心组件.md`
 - [LangChain 官方文档](https://python.langchain.com)(RAG 教程与 LCEL 指南)
 - [智谱开放平台文档](https://docs.bigmodel.cn)(模型列表与 API 参考)
 - [Chroma 官方文档](https://docs.trychroma.com)

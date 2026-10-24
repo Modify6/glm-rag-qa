@@ -2,7 +2,7 @@
 
 > 本文档面向**想读懂、维护和改造这份代码**的读者。README 是使用手册(怎么跑起来),本文是工程文档(为什么这么写、每一行在做什么、踩过哪些坑)。建议对照源码逐节阅读。
 >
-> 全部核心代码共 298 行,阅读顺序建议:config → loaders → vectorstore → chain → ingest → app。
+> 全部核心代码 513 行(含详细注释),另有 tests/ 下 7 个单元测试。阅读顺序建议:config → loaders → vectorstore → chain → cli。
 
 ---
 
@@ -15,8 +15,8 @@
   - [3.2 rag/loaders.py — 加载与切分](#32-ragloaderspy--加载与切分)
   - [3.3 rag/vectorstore.py — 向量库封装](#33-ragvectorstorepy--向量库封装)
   - [3.4 rag/chain.py — RAG 链路(核心)](#34-ragchainpy--rag-链路核心)
-  - [3.5 ingest.py — 入库入口](#35-ingestpy--入库入口)
-  - [3.6 app.py — 问答入口](#36-apppy--问答入口)
+  - [3.5 rag/cli.py — 命令行入口](#35-ragclipy--命令行入口)
+  - [3.6 rag/cli.py 的 chat() — 问答 REPL](#36-ragclipy-的-chat--问答-repl)
 - [4. 设计决策记录](#4-设计决策记录)
 - [5. 踩坑复盘(真实 Bug 档案)](#5-踩坑复盘真实-bug-档案)
 - [6. 一次提问的完整调用时序](#6-一次提问的完整调用时序)
@@ -30,31 +30,34 @@
 
 ```
 app.py ────────────┐
-ingest.py ─────────┤
+ingest.py ─────────┤  (薄壳:只 import 并调用)
                    ▼
-              rag/chain.py ──────┐
-                   │             │
-                   ▼             ▼
-       rag/vectorstore.py   rag/loaders.py
-                   │             │
-                   └──────┬──────┘
-                          ▼
-                    rag/config.py
-                          │
-                          ▼
-                    .env(密钥与参数)
+              rag/cli.py
+               ╱          ╲
+              ╱            ╲
+   rag/chain.py       rag/loaders.py
+        │                   │
+        ▼                   │
+  rag/vectorstore.py        │
+        ╲                  ╱
+         └────▶ rag/config.py ◀────┘(loaders 也依赖 config)
+                     │
+                     ▼
+               .env(密钥与参数)
 ```
 
-依赖单向、无环。两个入口脚本(命令行 I/O 层)依赖核心包,核心包内部 chain 依赖 vectorstore,vectorstore/loaders 依赖 config。**config 是唯一允许读 .env 的模块**,其他模块只 import 具体配置值——这样换配置方式(环境变量注入、云配置中心)只改一个文件。
+依赖单向、无环。根目录的 app.py / ingest.py 是**薄壳**(几行 import + 调用),命令行逻辑集中在 rag/cli.py(它同时被 pyproject.toml 的 [project.scripts] 注册为 rag-qa / rag-ingest 命令):chat 路径走 chain,ingest 路径直接用 loaders + vectorstore;chain 依赖 vectorstore,vectorstore/loaders 依赖 config。**config 是唯一允许读 .env 的模块**,其他模块只 import 具体配置值——这样换配置方式(环境变量注入、云配置中心)只改一个文件。
 
 ### 分层原则
 
 | 层 | 文件 | 职责 | 明确不做的事 |
 |----|------|------|--------------|
-| 入口层 | app.py / ingest.py | 命令行交互、启动前检查、进程退出 | 不出现任何 LangChain 业务逻辑(除消息类) |
+| 入口薄壳 | app.py / ingest.py | 仅 import rag.cli 并调用 | 不含任何逻辑 |
+| 命令行层 | rag/cli.py | 命令行交互、启动检查、历史管理、入库流程编排 | 不出现检索/提示词/模型的具体逻辑 |
 | 编排层 | rag/chain.py | 组装检索、提示词、模型 | 不管理文件、不碰向量库目录 |
 | 数据层 | rag/loaders.py、rag/vectorstore.py | 文档 I/O、向量库 I/O | 不读 .env(用 config 的值) |
 | 配置层 | rag/config.py | 常量与配置 | 不做任何 I/O 之外的逻辑 |
+| 测试层 | tests/ | 纯函数与守卫逻辑的单元测试(pytest) | 不做网络调用、不依赖 API Key |
 
 这个分层的直接收益:进阶练习里"给问答套 Streamlit 网页"只需新写一个入口文件替换 app.py,rag/ 一行不改;"换向量库"只改 vectorstore.py;"换模型"只改 chain.py 里两行。
 
@@ -94,7 +97,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 ```
 
-`PROJECT_ROOT` 通过 `__file__` 向上推导,保证**无论从哪个工作目录启动脚本,docs/ 和 data/ 都定位到项目根**——否则在别的目录执行 `python D:\...\ingest.py` 会在错误的位置找文档、建向量库。
+`PROJECT_ROOT` 通过 `__file__` 向上推导,保证**无论从哪个工作目录启动脚本,knowledge/ 和 data/ 都定位到项目根**——否则在别的目录执行 `python D:\...\ingest.py` 会在错误的位置找文档、建向量库。
 
 `load_dotenv(...)` 的机制:把 .env 中的键值对注入 `os.environ`(**已存在的环境变量不会被覆盖**),之后 `os.getenv("ZHIPUAI_API_KEY")` 才能读到。这是行业惯例而非绕路:本地开发用 .env 文件,部署到服务器/CI 时用真正的环境变量注入密钥,代码不用改。
 
@@ -143,7 +146,7 @@ separators=["\n\n", "\n", "。", "!", "?", ";", " ", ""]
 get_embeddings()      # 构造 ZhipuAIEmbeddings(检查 API Key + 显式传 api_key)
 get_vectorstore()     # 打开(不存在则创建)data/chroma 下的持久化 Chroma
 add_documents(chunks) # 批量向量化写入,返回条数
-count_documents()     # 当前库内条数(app.py 启动检查用)
+count_documents()     # 当前库内条数(cli 启动检查用)
 as_retriever()        # 包装成 Retriever,检索 top_k=config.TOP_K
 ```
 
@@ -240,15 +243,17 @@ return {"question": f"对话历史:\n{history_text}\n\n当前问题:{question}",
 
 `history[-6:]` 的截断是**成本控制**:历史越长 token 越贵、越干扰检索。3 轮对大多数知识问答够用;更严格的做法是用 LLM 生成一个"独立完整问题"替代文本拼接(README 进阶练习第 2 项)。
 
-### 3.5 ingest.py — 入库入口(42 行)
+### 3.5 rag/cli.py — 命令行入口(chat / ingest)
 
-流程:`检查 Key → [--rebuild 清库] → 加载 → 切分 → 向量化写入`。三个工程细节:
+根目录的 app.py / ingest.py 只是几行的薄壳,真正的命令行逻辑在 `rag/cli.py`,拆成两个函数:chat()(问答 REPL)与 ingest()(入库流程)。它同时被注册为可安装命令,所以"加 Web 界面"时直接复用同一套启动检查。
+
+**ingest()** 的流程:`检查 Key → [--rebuild 清库] → 加载 → 切分 → 向量化写入`。三个工程细节:
 
 - `sys.exit("错误:...")` 把缺 Key、空目录这类**用户可自行修复的问题**变成带指引的友好退出,而不是半屏 traceback;
 - `--rebuild` 用 `delete_collection()` 清空重建。为什么需要它:入库是**纯增量**的,改了切分参数后旧 chunk 仍留在库里,新旧混检会污染检索结果;
 - 每步打印数量(加载 N 个文档 → 切成 M 个片段 → 写入 M 条),让入库过程可观察——M 远大于或小于预期时,第一现场就是切分参数有问题。
 
-### 3.6 app.py — 问答入口(59 行)
+### 3.6 rag/cli.py 的 chat() — 问答 REPL
 
 命令行 REPL,职责边界刻意收窄:启动检查 → 构建链 → 循环(读输入 → invoke → 打印 → 追加历史)。要点:
 
@@ -268,7 +273,7 @@ return {"question": f"对话历史:\n{history_text}\n\n当前问题:{question}",
 | Chroma 单 collection | 按文件分 collection | Chroma 支持元数据过滤,单库 + filter 的扩展性足够,管理也更简单 |
 | 显式 `api_key=` 传参 | 依赖环境变量推断 | 智谱类在构造时校验,显式传参把"缺 Key"提前到启动时刻,报错点离根因近 |
 | loaders 用字典注册表 | if/elif 分支 | 加格式零改动控制流;LOADERS 表本身就是文档 |
-| 入口脚本不做核心逻辑 | 逻辑写在 app.py | 换 Web 壳时 rag/ 零改动;核心包可被测试直接 import |
+| 入口逻辑收进 rag/cli.py 而非写在 app.py | 逻辑写在根目录脚本里 | app.py 保持几行薄壳;逻辑进包才能注册 [project.scripts] 命令入口、被测试 import;换 Web 壳时 rag/ 零改动 |
 
 ## 5. 踩坑复盘(真实 Bug 档案)
 
@@ -322,7 +327,7 @@ return {"question": f"对话历史:\n{history_text}\n\n当前问题:{question}",
 
 ```
 用户输入问题
- │ app.py
+ │ app.py → rag/cli.py · chat()
  │ ① question.strip() 检查控制命令(clear/q)
  ▼
 chain.invoke({"question": q, "chat_history": [上一轮 HumanMessage/AIMessage, ...]})
