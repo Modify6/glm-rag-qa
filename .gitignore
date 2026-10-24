@@ -1,0 +1,14 @@
+# 密钥与环境
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 向量库数据(可随时用 ingest.py 重建)
+data/
+
+# IDE
+.idea/
+.vscode/
