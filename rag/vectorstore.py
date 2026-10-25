@@ -9,6 +9,8 @@
 拿 A 模型的向量去 B 模型的空间里找近邻,等于拿拼音查英文词典),
 单点构造从结构上杜绝了"两边模型名不一致"这类事故。
 """
+import os
+
 from langchain_chroma import Chroma
 from langchain_community.embeddings import ZhipuAIEmbeddings
 from langchain_core.documents import Document
@@ -16,13 +18,42 @@ from langchain_core.documents import Document
 from rag import config
 
 
-def get_embeddings() -> ZhipuAIEmbeddings:
-    """构造智谱向量模型客户端(embedding-3,2048 维)。
+def get_embeddings():
+    """构造向量模型客户端——全工程唯一的构造点。
+
+    根据配置返回两种提供商之一:
+    - "zhipu":智谱 embedding-3(云端,收费,效果好);
+    - "local":fastembed 跑本地开源 BGE 中文模型(免费、离线,首次运行下载模型)。
 
     显式检查并传入 api_key 的原因:ZhipuAIEmbeddings 内部虽然也能从
     环境变量推断,但显式传参能把"没配 Key"的失败提前到构造时刻,
     并且报错信息由我们掌控(而不是 SDK 的 pydantic 校验堆栈)。
     """
+    if config.EMBEDDING_PROVIDER == "local":
+        # 走国内镜像下载模型(HuggingFace 官方源在国内经常连不上)
+        os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+        from fastembed import TextEmbedding
+
+        class _LocalEmbeddings:
+            """把 fastembed 模型适配成 LangChain Embeddings 接口。
+
+            LangChain 的 Embeddings "接口"其实只是约定:
+            有 embed_documents(list[str]) 和 embed_query(str) 两个方法即可,
+            Chroma 只认这两个方法(鸭子类型)。手写这个适配器本身就是
+            理解"统一接口"是什么的好练习。
+            """
+
+            def __init__(self, model_name: str):
+                self._model = TextEmbedding(model_name=model_name)
+
+            def embed_documents(self, texts: list[str]) -> list[list[float]]:
+                return [vec.tolist() for vec in self._model.embed(texts)]
+
+            def embed_query(self, text: str) -> list[float]:
+                return next(iter(self._model.embed([text]))).tolist()
+
+        return _LocalEmbeddings(config.LOCAL_EMBEDDING_MODEL)
+
     if not config.ZHIPUAI_API_KEY:
         raise SystemExit("错误:未配置 ZHIPUAI_API_KEY,请复制 .env.example 为 .env 并填入密钥。")
     return ZhipuAIEmbeddings(model=config.EMBEDDING_MODEL, api_key=config.ZHIPUAI_API_KEY)

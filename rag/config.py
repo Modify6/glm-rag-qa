@@ -29,10 +29,15 @@ ZHIPUAI_API_KEY: str = os.getenv("ZHIPUAI_API_KEY", "")
 CHAT_MODEL: str = os.getenv("CHAT_MODEL", "glm-4-flash")
 
 # ========== 向量模型(文本转向量用) ==========
-# embedding-3:智谱新一代向量模型,输出 2048 维向量,中文效果好。
+# 提供商二选一(改 .env 的 EMBEDDING_PROVIDER 后需 ingest.py --rebuild 重建):
+#   zhipu — 智谱 embedding-3(2048 维,效果好,但 embedding API 收费,需账户有余额)
+#   local — 本地开源模型 BGE 中文版(零 API 成本、离线可用,首次运行自动下载约 100MB)
 # 注意:入库和查询必须用同一个模型(不同模型的向量空间不互通,
 # 本项目通过"只在 vectorstore.py 的 get_embeddings() 构造一次"来保证)。
+EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "zhipu")
 EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "embedding-3")
+# local 提供商使用的开源模型(fastembed 加载,512 维)
+LOCAL_EMBEDDING_MODEL: str = os.getenv("LOCAL_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
 
 # ========== 路径配置 ==========
 # 知识库语料目录:ingest.py 递归扫描这里的 .md / .txt / .pdf。

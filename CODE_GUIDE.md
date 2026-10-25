@@ -71,7 +71,7 @@
 
 ### 最好的理解方式:看"没有它"的版本
 
-`examples/without_langchain.py` 是一个**一行 LangChain 都不用**的等价实现(裸 zhipuai SDK + 裸 chromadb 客户端,约 90 行),功能与 app.py 单轮问答相同。对照着读,你会发现:
+`examples/without_langchain.py` 是一个**一行 LangChain 都不用**的等价实现(本地 fastembed 向量模型 + 裸 chromadb 客户端 + 裸 zhipuai SDK 仅对话,约 100 行),功能与 app.py 单轮问答相同,embedding 零 API 成本。对照着读,你会发现:
 
 - 它**完全可行**——LangChain 没有做任何"不做就做不到"的事,这就是"胶水层"的含义;
 - 切分算法是手写的滑窗(没有递归边界感知)、提示词是手拼字符串(没有变量校验)、取回答要剥三层响应结构、每换一家厂商所有调用代码重写;

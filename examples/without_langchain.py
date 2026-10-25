@@ -1,10 +1,10 @@
 """不用 LangChain 的最小 RAG 问答(教学对照版)。
 
-和 app.py 的问答功能等价(单轮),但只用智谱官方 SDK(zhipuai)和
-chromadb 原生客户端,一行 LangChain 代码都没有。
+和 app.py 的问答功能等价(单轮),只依赖:fastembed(本地向量模型)、
+chromadb 原生客户端、智谱官方 SDK(仅对话)——embedding 零 API 成本。
 
-跑法(先完成过一次正常入库):
-    uv run python examples/without_langchain.py "什么是RAG"
+跑法(无需先入库,脚本自己重建 raw_demo 集合):
+    uv run python examples/without_langchain.py "什么是rag"
 
 注意:它用独立的 raw_demo 集合存储,每次运行全量重建,
 不会污染 LangChain 版本的 knowledge_base 集合。
@@ -14,9 +14,11 @@ chromadb 原生客户端,一行 LangChain 代码都没有。
 2. 哪些地方"想换就很难"?(换模型厂商 = 重写调用代码)
 """
 
+import os
 import sys
 
 import chromadb
+from fastembed import TextEmbedding
 from zhipuai import ZhipuAI
 
 # 只复用密钥与参数配置(dotenv 读取,与 LangChain 无关)
@@ -25,13 +27,19 @@ import rag.config as config
 # ── 直连厂商 SDK:没有 LangChain 的统一接口,就是裸的客户端 ──────────────
 zhipu = ZhipuAI(api_key=config.ZHIPUAI_API_KEY)
 chroma = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
+
+# 本地向量模型(fastembed,零 API 成本):没有 LangChain 的 Embeddings
+# 统一接口,向量能力由你自己选择和接入——这里选开源 BGE 中文模型
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")  # 国内镜像
+embedding_model = TextEmbedding(model_name=config.LOCAL_EMBEDDING_MODEL)
+
+# 向量集合:与 LangChain 版的 knowledge_base 相互独立,互不污染
 collection = chroma.get_or_create_collection("raw_demo")
 
 
 def embed(texts: list[str]) -> list[list[float]]:
-    """文本转向量:直接调智谱 SDK,和 ZhipuAIEmbeddings 干的事一模一样。"""
-    resp = zhipu.embeddings.create(model=config.EMBEDDING_MODEL, input=texts)
-    return [item.embedding for item in resp.data]
+    """文本转向量:本地模型推理,不花一分钱、不需要联网。"""
+    return [vec.tolist() for vec in embedding_model.embed(texts)]
 
 
 def split_text(text: str) -> list[str]:
@@ -46,8 +54,9 @@ def split_text(text: str) -> list[str]:
 
 def ingest_demo() -> int:
     """把 knowledge/ 下的 md 文档入库(每次运行先清空重建)。"""
+    global collection
     chroma.delete_collection("raw_demo")
-    collection = chroma.get_or_create_collection("raw_demo")
+    collection = chroma.get_or_create_collection("raw_demo")  # 重建后必须回写全局引用
     total = 0
     for path in sorted(config.KNOWLEDGE_DIR.rglob("*.md")):
         text = path.read_text(encoding="utf-8")

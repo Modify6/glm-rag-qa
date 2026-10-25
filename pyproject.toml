@@ -12,6 +12,7 @@ dependencies = [
     "chromadb>=1.5",
     "python-dotenv>=1.0",
     "pypdf>=6.0",
+    "fastembed>=0.9.1",
 ]
 
 # 可安装的命令入口(uv sync 后,任何目录都能直接运行):

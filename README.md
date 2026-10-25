@@ -157,7 +157,9 @@ copy .env.example .env
 |------|------|--------|------|
 | `ZHIPUAI_API_KEY` | ✅ | 无 | 智谱 API 密钥,程序启动时会检查 |
 | `CHAT_MODEL` | | `glm-4-flash` | 对话模型。`glm-4-flash` 免费;追求质量可换 `glm-4-plus`(收费) |
-| `EMBEDDING_MODEL` | | `embedding-3` | 向量模型,智谱新一代 2048 维向量模型 |
+| `EMBEDDING_PROVIDER` | | `zhipu` | 向量模型提供商:`zhipu`(云端,收费需余额)或 `local`(本地开源模型,免费,首次运行自动下载约 100MB)。切换后需 `ingest.py --rebuild` 重建 |
+| `EMBEDDING_MODEL` | | `embedding-3` | 云端向量模型(仅 `zhipu` 提供商时生效) |
+| `LOCAL_EMBEDDING_MODEL` | | `BAAI/bge-small-zh-v1.5` | 本地向量模型(仅 `local` 提供商时生效,经 fastembed 加载) |
 | `CHUNK_SIZE` | | `500` | 每个文本片段的最大字符数,详见[调优指南](#参数调优指南) |
 | `CHUNK_OVERLAP` | | `80` | 相邻片段重叠的字符数(约为 chunk_size 的 15%) |
 | `TOP_K` | | `4` | 每次提问检索返回的片段数 |
@@ -375,6 +377,9 @@ context: "[1] 来源:…\docs\rag-基础概念.md\nRAG 让回答有据可查…�
 
 **Q:入库时报 embedding 接口鉴权错误(`APIAuthenticationError`)**
 API Key 无效或已过期,回开放平台重新生成。注意 Key 格式形如 `xxxx.yyyy`(两段以点号连接)。
+
+**Q:入库/提问报 `429 余额不足或无可用资源包`(错误码 1113)**
+embedding API 是收费的,而且**每次提问把"问题"转向量也要调用它**——不只是入库。零成本方案:在 `.env` 里设置 `EMBEDDING_PROVIDER=local`,改用本地开源 BGE 中文模型(fastembed 推理,免费、离线,首次运行自动下载约 100MB 模型),然后 `ingest.py --rebuild` 重建。注意 `glm-4-flash` 对话模型本身免费,只有 embedding 计费。也可以给账户充值后继续用云端 embedding-3。
 
 **Q:入库很慢或超时**
 每个片段都要调一次向量 API。文档多时属正常现象(几秒到几分钟);持续超时检查网络,必要时确认镜像/代理设置。
